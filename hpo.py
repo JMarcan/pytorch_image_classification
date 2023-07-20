@@ -10,6 +10,10 @@ import torchvision.transforms as transforms
 
 import argparse
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+logger.addHandler(logging.StreamHandler(sys.stdout))
+
 def test(model, test_loader, criterion, device):
     test_loss = 0
     correct = 0
