@@ -31,12 +31,10 @@ def test(model, test_loader, loss_criterion, device):
             correct += pred.eq(label.view_as(pred)).sum().item()
 
     test_loss /= len(test_loader.dataset)
+    test_accuracy = 100.0 * correct / len(test_loader.dataset)
 
-    print(
-        "\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n".format(
-            test_loss, correct, len(test_loader.dataset), 100.0 * correct / len(test_loader.dataset)
-        )
-    )
+    logger.info(f"Testing loss: {test_loss}")
+    logger.info(f"Testing accuracy: {test_accuracy}")
 
 def train(model, train_loader, loss_criterion, optimizer, device):
     for batch_idx, (data, label) in enumerate(train_loader):
