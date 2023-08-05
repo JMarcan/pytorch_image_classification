@@ -1,7 +1,7 @@
 # pytorch_image_classification
 
 This project uses PyTorch framework<br>
-and AWS SageMaker to train image classifier<br>
+and AWS SageMaker to train an image classifier<br>
 to classify blood cell images.<br><br>
 
 The classification is based on ResNet-50 neural network that we fine-tune here for the target dataset<br>
