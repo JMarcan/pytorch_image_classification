@@ -1,5 +1,3 @@
-#TODO: Import your dependencies.
-#For instance, below are some dependencies you might need if you are using Pytorch
 import os
 import sys
 import argparse
@@ -18,66 +16,90 @@ logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
 def test(model, test_loader, loss_criterion, device):
-    test_loss = 0
-    correct = 0
     model.eval()
-    with torch.no_grad():
-        for data, label in test_loader:
-            data = data.to(device)
-            label = label.to(device)
-            output = model(data)
-            test_loss += loss_criterion(output, label)  # sum up batch loss
-            pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
-            correct += pred.eq(label.view_as(pred)).sum().item()
+    running_loss=0
+    running_corrects=0
+    
+    for inputs, labels in test_loader:
+        inputs = inputs.to(device)
+        labels = labels.to(device)
 
-    test_loss /= len(test_loader.dataset)
-    test_accuracy = 100.0 * correct / len(test_loader.dataset)
+        outputs = model(inputs)
+        loss = loss_criterion(outputs, labels)
+        _, preds = torch.max(outputs, 1)
+        running_loss += loss.item() * inputs.size(0)
+        running_corrects += torch.sum(preds == labels.data)
 
-    logger.info(f"Testing loss: {test_loss}")
-    logger.info(f"Testing accuracy: {test_accuracy}")
+    total_loss = running_loss // len(test_loader)
+    total_acc = running_corrects.double() // len(test_loader)
 
-def train(model, train_loader, loss_criterion, optimizer, device):
-    for batch_idx, (data, label) in enumerate(train_loader):
-        data = data.to(device)
-        label = label.to(device)
-        optimizer.zero_grad()
-        output = model(data)
-        loss = loss_criterion(output, label)
-        loss.backward()
-        optimizer.step()
-        if batch_idx % 100 == 0:
-            print(
-                "Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}".format(
-                    batch_idx,
-                    batch_idx * len(data),
-                    len(train_loader.dataset),
-                    100.0 * batch_idx / len(train_loader),
-                    loss.item(),
-                )
-            )
+    logger.info(f"Testing Loss: {total_loss}")
+    logger.info(f"Testing Accuracy: {total_acc}")
+
+def train(model, train_loader, validation_loader, loss_criterion, optimizer, epochs, device):
+
+    best_loss=1e6
+    loss_counter=0
+    image_dataset={'train':train_loader, 'valid':validation_loader}
+
+    for epoch in range(epochs):
+        logger.info(f"Epoch: {epoch}")
+        for phase in ['train', 'valid']:
+            if phase=='train':
+                model.train()
+            else:
+                model.eval()
+            running_loss = 0.0
+            running_corrects = 0
+
+            for inputs, labels in image_dataset[phase]:
+                outputs = model(inputs)
+                loss = criterion(outputs, labels)
+
+                if phase=='train':
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+
+                _, preds = torch.max(outputs, 1)
+                running_loss += loss.item() * inputs.size(0)
+                running_corrects += torch.sum(preds == labels.data)
+
+            epoch_loss = running_loss // len(image_dataset[phase])
+            epoch_acc = running_corrects // len(image_dataset[phase])
+            
+            if phase=='valid':
+                if epoch_loss<best_loss:
+                    best_loss=epoch_loss
+                else:
+                    loss_counter+=1
+
+
+            logger.info('{} loss: {:.4f}, acc: {:.4f}, best loss: {:.4f}'.format(phase,
+                                                                                 epoch_loss,
+                                                                                 epoch_acc,
+                                                                                 best_loss))
+        if loss_counter==1:
+            break
+        if epoch==0:
+            break
     return model
     
 def net():
-    '''
-        Initialize the image classification model for transfer learning
-    '''
     NUM_CLASSES = 4
     
-    model = models.resnet50(pretrained=True) # load the pretrained model
+    # Load the pretrained model
+    model = models.resnet50(pretrained=True) 
     
     # Freeze the parameters of the model to use for feature extraction
     for param in model.parameters():
         param.requires_grad = False
         
     # Configure output layer to classify for our 4 classes
-    fc_inputs = model.fc.in_features
     model.fc = nn.Sequential(
-        nn.Linear(fc_inputs, 256),
-        nn.ReLU(),
-        nn.Dropout(0.4),
-        nn.Linear(256, NUM_CLASSES), 
-        nn.LogSoftmax(dim=1) # For using NLLLoss()
-    )
+        nn.Linear(2048, 128),
+        nn.ReLU(inplace=True),
+        nn.Linear(128, NUM_CLASSES))
     
     return model
 
@@ -86,39 +108,25 @@ def create_data_loaders(data, batch_size):
     test_data_path = os.path.join(data, "TEST")
     validation_data_path = os.path.join(data, "TEST_SIMPLE")
     
-    transform = transforms.Compose([
-        transforms.ToTensor()
-    ])
+    train_transform = transforms.Compose([
+        transforms.RandomResizedCrop((224, 224)),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        ])
+
+    test_transform = transforms.Compose([
+        transforms.Resize((224, 224)),
+        transforms.ToTensor(),
+        ])
     
-    train_data = torchvision.datasets.ImageFolder(
-        root=train_data_path,
-        transform=transform
-    )
-    train_data_loader = torch.utils.data.DataLoader(
-        train_data,
-        batch_size=batch_size,
-        shuffle=True,
-    )
+    train_data = torchvision.datasets.ImageFolder(root=train_data_path, transform=train_transform)
+    train_data_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True)
     
-    test_data = torchvision.datasets.ImageFolder(
-        root=test_data_path,
-        transform=transform
-    )
-    test_data_loader = torch.utils.data.DataLoader(
-        test_data,
-        batch_size=batch_size,
-        shuffle=False,
-    )
+    test_data = torchvision.datasets.ImageFolder(root=test_data_path, transform=test_transform)
+    test_data_loader = torch.utils.data.DataLoader(test_data, batch_size=batch_size, shuffle=True,)
     
-    validation_data = torchvision.datasets.ImageFolder(
-        root=validation_data_path,
-        transform=transform
-    )
-    validation_data_loader = torch.utils.data.DataLoader(
-        validation_data,
-        batch_size=batch_size,
-        shuffle=False,
-    )
+    validation_data = torchvision.datasets.ImageFolder(root=validation_data_path, transform=test_transform)
+    validation_data_loader = torch.utils.data.DataLoader(validation_data, batch_size=batch_size, shuffle=True,)
     
     return train_data_loader, test_data_loader, validation_data_loader
 
@@ -126,6 +134,10 @@ def main(args):
     logger.info(f"[ Hyperparameters ] Learning Rate: {args.lr} | Batch Size: {args.batch_size} | Epochs: {args.epochs}")
     logger.info(f"Data Paths: {args.data}")
          
+    # Load data
+    train_loader, test_loader, validation_loader = create_data_loaders(args.data, args.batch_size)
+    logger.info(f"[ Number of datapoints ] Train data: {len(train_loader.dataset)} | Validation data:{len(validation_loader.dataset)} | Test data: {len(test_loader.dataset)}")
+
     # Initialize a model by calling the net function
     model=net()
     
@@ -137,27 +149,27 @@ def main(args):
     loss_criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.fc.parameters(), lr=args.lr)
          
-    train_loader, test_loader, validation_loader = create_data_loaders(args.data, args.batch_size)
-    logger.info(f"[ Number of datapoints ] Train data: {len(train_loader.dataset)} | Validation data:{len(validation_loader.dataset)} | Test data: {len(test_loader.dataset)}")
+    logger.info("Starting Model Training")
+    model=train(model, train_loader, validation_loader, loss_criterion, optimizer, args.epochs, device)
     
-    model=train(model, train_loader, loss_criterion, optimizer, device)
-    
+    logger.info("Testing Model")
     test(model, test_loader, loss_criterion, device)
     
-    torch.save(model.state_dict(), os.path.join(args.model_dir, "model.pth"))
+    logger.info("Saving Model")
+    torch.save(model.cpu().state_dict(), os.path.join(args.model_dir, "model.pth"))
 
 if __name__=="__main__":
     parser=argparse.ArgumentParser()
     
-    parser.add_argument("--lr",
+    parser.add_argument("--learning_rate",
                         type=float,
-                        default=0.01)
-    parser.add_argument("--batch-size",
+                        default=0.1)
+    parser.add_argument("--batch_size",
                         type=int,
                         default=32)
     parser.add_argument("--epochs",
                         type=int,
-                        default=10)
+                        default=5)
     parser.add_argument("--data", type=str,
                         default=os.environ['SM_CHANNEL_DATA'])
     parser.add_argument("--model_dir",
