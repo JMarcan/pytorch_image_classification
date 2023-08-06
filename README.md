@@ -18,7 +18,7 @@ The model is then deployed to a Sagemaker Endpoint for inference.
 
 ## Project Set Up Instructions
 The jupyter notebook and is prepared to be run on AWS SageMaker Notebook Instance<br>
-where it orchestrates the whole process from the data preparation, 
+where it orchestrates the whole process from the data preparation,<br>
 hyperparameter tuning and training, to the deployment<br>
 
 ## Files
@@ -34,7 +34,7 @@ expects as input images of 224 x 224 pixels<br>
 and is relatively compact taking just 98 MB.
 
 ## Querying a model endpoint
-You can find the example in the notebook around the function predict 
+You can find the example in the notebook in the section with the function predict 
 ```
 # Deploy the model to an endpoint
 predictor=estimator.deploy(initial_instance_count=1, instance_type='ml.m5.large')
