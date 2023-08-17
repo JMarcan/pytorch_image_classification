@@ -53,8 +53,10 @@ def train(model, train_loader, validation_loader, loss_criterion, optimizer, epo
             running_corrects = 0
 
             for inputs, labels in image_dataset[phase]:
+                inputs = inputs.to(device)
+                labels = labels.to(device)
                 outputs = model(inputs)
-                loss = criterion(outputs, labels)
+                loss = loss_criterion(outputs, labels)
 
                 if phase=='train':
                     optimizer.zero_grad()
@@ -131,7 +133,7 @@ def create_data_loaders(data, batch_size):
     return train_data_loader, test_data_loader, validation_data_loader
 
 def main(args):
-    logger.info(f"[ Hyperparameters ] Learning Rate: {args.lr} | Batch Size: {args.batch_size} | Epochs: {args.epochs}")
+    logger.info(f"[ Hyperparameters ] Learning Rate: {args.learning_rate} | Batch Size: {args.batch_size} | Epochs: {args.epochs}")
     logger.info(f"Data Paths: {args.data}")
          
     # Load data
@@ -147,7 +149,7 @@ def main(args):
     
     # Create loss and optimizer
     loss_criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.fc.parameters(), lr=args.lr)
+    optimizer = optim.Adam(model.fc.parameters(), lr=args.learning_rate)
          
     logger.info("Starting Model Training")
     model=train(model, train_loader, validation_loader, loss_criterion, optimizer, args.epochs, device)

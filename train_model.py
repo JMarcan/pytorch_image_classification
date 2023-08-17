@@ -13,12 +13,13 @@ import torchvision.models as models
 import torchvision.transforms as transforms
 
 import smdebug.pytorch as smd
+hook=smd.get_hook(create_if_not_exists=True)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
-def test(model, test_loader, loss_criterion, device, hook):
+def test(model, test_loader, loss_criterion, device):
     hook.set_mode(smd.modes.EVAL)
     model.eval()
     running_loss=0
@@ -40,7 +41,7 @@ def test(model, test_loader, loss_criterion, device, hook):
     logger.info(f"Testing Loss: {total_loss}")
     logger.info(f"Testing Accuracy: {total_acc}")
 
-def train(model, train_loader, validation_loader, loss_criterion, optimizer, device, hook):
+def train(model, train_loader, validation_loader, loss_criterion, optimizer, epochs, device):
     hook.set_mode(smd.modes.TRAIN)
         
     best_loss=1e6
@@ -58,8 +59,10 @@ def train(model, train_loader, validation_loader, loss_criterion, optimizer, dev
             running_corrects = 0
 
             for inputs, labels in image_dataset[phase]:
+                inputs = inputs.to(device)
+                labels = labels.to(device)
                 outputs = model(inputs)
-                loss = criterion(outputs, labels)
+                loss = loss_criterion(outputs, labels)
 
                 if phase=='train':
                     optimizer.zero_grad()
@@ -136,7 +139,7 @@ def create_data_loaders(data, batch_size):
     return train_data_loader, test_data_loader, validation_data_loader
 
 def main(args):
-    logger.info(f"[ Hyperparameters ] Learning Rate: {args.lr} | Batch Size: {args.batch_size} | Epochs: {args.epochs}")
+    logger.info(f"[ Hyperparameters ] Learning Rate: {args.learning_rate} | Batch Size: {args.batch_size} | Epochs: {args.epochs}")
     logger.info(f"Data Paths: {args.data}")
          
     # Load data
@@ -152,7 +155,7 @@ def main(args):
     
     # Create loss and optimizer
     loss_criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.fc.parameters(), lr=args.lr)
+    optimizer = optim.Adam(model.fc.parameters(), lr=args.learning_rate)
          
     logger.info("Starting Model Training")
     model=train(model, train_loader, validation_loader, loss_criterion, optimizer, args.epochs, device)
