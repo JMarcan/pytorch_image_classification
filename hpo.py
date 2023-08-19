@@ -105,10 +105,10 @@ def net():
     
     return model
 
-def create_data_loaders(data, batch_size):
-    train_data_path = os.path.join(data, "TRAIN")
-    test_data_path = os.path.join(data, "TEST")
-    validation_data_path = os.path.join(data, "TEST_SIMPLE")
+def create_data_loaders(data_path, batch_size):
+    train_data_path = os.path.join(data_path, "TRAIN")
+    test_data_path = os.path.join(data_path, "TEST")
+    validation_data_path = os.path.join(data_path, "TEST_SIMPLE")
     
     train_transform = transforms.Compose([
         transforms.RandomResizedCrop((224, 224)),
@@ -134,10 +134,10 @@ def create_data_loaders(data, batch_size):
 
 def main(args):
     logger.info(f"[ Hyperparameters ] Learning Rate: {args.learning_rate} | Batch Size: {args.batch_size} | Epochs: {args.epochs}")
-    logger.info(f"Data Paths: {args.data}")
+    logger.info(f"Data Path: {args.data_path}")
          
     # Load data
-    train_loader, test_loader, validation_loader = create_data_loaders(args.data, args.batch_size)
+    train_loader, test_loader, validation_loader = create_data_loaders(args.data_path, args.batch_size)
     logger.info(f"[ Number of datapoints ] Train data: {len(train_loader.dataset)} | Validation data:{len(validation_loader.dataset)} | Test data: {len(test_loader.dataset)}")
 
     # Initialize a model by calling the net function
@@ -157,11 +157,13 @@ def main(args):
     logger.info("Testing Model")
     test(model, test_loader, loss_criterion, device)
     
-    logger.info("Saving Model")
+    logger.info(f"Saving Model to {args.model_dir}")
     torch.save(model.cpu().state_dict(), os.path.join(args.model_dir, "model.pth"))
 
 if __name__=="__main__":
     parser=argparse.ArgumentParser()
+    
+    parser.add_argument("--data_path", type=str)
     
     parser.add_argument("--learning_rate",
                         type=float,
@@ -172,14 +174,9 @@ if __name__=="__main__":
     parser.add_argument("--epochs",
                         type=int,
                         default=5)
-    parser.add_argument("--data", type=str,
-                        default=os.environ['SM_CHANNEL_DATA'])
     parser.add_argument("--model_dir",
                         type=str,
                         default=os.environ['SM_MODEL_DIR'])
-    parser.add_argument("--output_dir",
-                        type=str,
-                        default=os.environ['SM_OUTPUT_DATA_DIR'])
     
     args=parser.parse_args()
     print(args)

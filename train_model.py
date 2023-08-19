@@ -13,13 +13,12 @@ import torchvision.models as models
 import torchvision.transforms as transforms
 
 import smdebug.pytorch as smd
-hook=smd.get_hook(create_if_not_exists=True)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
-def test(model, test_loader, loss_criterion, device):
+def test(model, test_loader, loss_criterion, device, hook):
     hook.set_mode(smd.modes.EVAL)
     model.eval()
     running_loss=0
@@ -41,7 +40,7 @@ def test(model, test_loader, loss_criterion, device):
     logger.info(f"Testing Loss: {total_loss}")
     logger.info(f"Testing Accuracy: {total_acc}")
 
-def train(model, train_loader, validation_loader, loss_criterion, optimizer, epochs, device):
+def train(model, train_loader, validation_loader, loss_criterion, optimizer, epochs, device, hook):
     hook.set_mode(smd.modes.TRAIN)
         
     best_loss=1e6
@@ -111,10 +110,10 @@ def net():
     
     return model
 
-def create_data_loaders(data, batch_size):
-    train_data_path = os.path.join(data, "TRAIN")
-    test_data_path = os.path.join(data, "TEST")
-    validation_data_path = os.path.join(data, "TEST_SIMPLE")
+def create_data_loaders(data_path, batch_size):
+    train_data_path = os.path.join(data_path, "TRAIN")
+    test_data_path = os.path.join(data_path, "TEST")
+    validation_data_path = os.path.join(data_path, "TEST_SIMPLE")
     
     train_transform = transforms.Compose([
         transforms.RandomResizedCrop((224, 224)),
@@ -140,10 +139,10 @@ def create_data_loaders(data, batch_size):
 
 def main(args):
     logger.info(f"[ Hyperparameters ] Learning Rate: {args.learning_rate} | Batch Size: {args.batch_size} | Epochs: {args.epochs}")
-    logger.info(f"Data Paths: {args.data}")
+    logger.info(f"Data Path: {args.data_path}")
          
     # Load data
-    train_loader, test_loader, validation_loader = create_data_loaders(args.data, args.batch_size)
+    train_loader, test_loader, validation_loader = create_data_loaders(args.data_path, args.batch_size)
     logger.info(f"[ Number of datapoints ] Train data: {len(train_loader.dataset)} | Validation data:{len(validation_loader.dataset)} | Test data: {len(test_loader.dataset)}")
 
     # Initialize a model by calling the net function
@@ -156,20 +155,27 @@ def main(args):
     # Create loss and optimizer
     loss_criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.fc.parameters(), lr=args.learning_rate)
+    
+    # create the SMDebug hook and register to the model and loss function.
+    hook = smd.Hook.create_from_json_file()
+    hook.register_hook(model)
+    hook.register_loss(loss_criterion)
          
     logger.info("Starting Model Training")
-    model=train(model, train_loader, validation_loader, loss_criterion, optimizer, args.epochs, device)
+    model=train(model, train_loader, validation_loader, loss_criterion, optimizer, args.epochs, device, hook)
     
     logger.info("Testing Model")
-    test(model, test_loader, loss_criterion, device)
+    test(model, test_loader, loss_criterion, device, hook)
     
-    logger.info("Saving Model")
+    logger.info(f"Saving Model to {args.model_dir}")
     torch.save(model.cpu().state_dict(), os.path.join(args.model_dir, "model.pth"))
 
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
     
+    parser.add_argument("--data_path", type=str)
+
     parser.add_argument("--learning_rate",
                         type=float,
                         default=0.1)
@@ -179,14 +185,9 @@ if __name__=='__main__':
     parser.add_argument("--epochs",
                         type=int,
                         default=5)
-    parser.add_argument("--data", type=str,
-                        default=os.environ['SM_CHANNEL_DATA'])
     parser.add_argument("--model_dir",
                         type=str,
                         default=os.environ['SM_MODEL_DIR'])
-    parser.add_argument("--output_dir",
-                        type=str,
-                        default=os.environ['SM_OUTPUT_DATA_DIR'])
     
     args=parser.parse_args()
     print(args)
