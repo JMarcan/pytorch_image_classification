@@ -32,10 +32,10 @@ def test(model, test_loader, loss_criterion, device, hook):
         loss = loss_criterion(outputs, labels)
         _, preds = torch.max(outputs, 1)
         running_loss += loss.item() * inputs.size(0)
-        running_corrects += torch.sum(preds == labels.data)
+        running_corrects += torch.sum(preds == labels).item()
 
-    total_loss = running_loss // len(test_loader)
-    total_acc = running_corrects.double() // len(test_loader)
+    total_loss = running_loss / len(test_loader)
+    total_acc = running_corrects / len(test_loader)
 
     logger.info(f"Testing Loss: {total_loss}")
     logger.info(f"Testing Accuracy: {total_acc}")
@@ -44,7 +44,6 @@ def train(model, train_loader, validation_loader, loss_criterion, optimizer, epo
     hook.set_mode(smd.modes.TRAIN)
         
     best_loss=1e6
-    loss_counter=0
     image_dataset={'train':train_loader, 'valid':validation_loader}
 
     for epoch in range(epochs):
@@ -70,26 +69,19 @@ def train(model, train_loader, validation_loader, loss_criterion, optimizer, epo
 
                 _, preds = torch.max(outputs, 1)
                 running_loss += loss.item() * inputs.size(0)
-                running_corrects += torch.sum(preds == labels.data)
+                running_corrects += torch.sum(preds == labels).item()
 
-            epoch_loss = running_loss // len(image_dataset[phase])
-            epoch_acc = running_corrects // len(image_dataset[phase])
+            epoch_loss = running_loss / len(image_dataset[phase])
+            epoch_acc = running_corrects / len(image_dataset[phase])
             
             if phase=='valid':
                 if epoch_loss<best_loss:
                     best_loss=epoch_loss
-                else:
-                    loss_counter+=1
-
 
             logger.info('{} loss: {:.4f}, acc: {:.4f}, best loss: {:.4f}'.format(phase,
                                                                                  epoch_loss,
                                                                                  epoch_acc,
                                                                                  best_loss))
-        if loss_counter==1:
-            break
-        if epoch==0:
-            break
     return model
     
 def net():
@@ -112,8 +104,8 @@ def net():
 
 def create_data_loaders(data_path, batch_size):
     train_data_path = os.path.join(data_path, "TRAIN")
-    test_data_path = os.path.join(data_path, "TEST")
-    validation_data_path = os.path.join(data_path, "TEST_SIMPLE")
+    test_data_path = os.path.join(data_path, "TEST_SIMPLE")
+    validation_data_path = os.path.join(data_path, "TEST")
     
     train_transform = transforms.Compose([
         transforms.RandomResizedCrop((224, 224)),
@@ -130,10 +122,10 @@ def create_data_loaders(data_path, batch_size):
     train_data_loader = torch.utils.data.DataLoader(train_data, batch_size=batch_size, shuffle=True)
     
     test_data = torchvision.datasets.ImageFolder(root=test_data_path, transform=test_transform)
-    test_data_loader = torch.utils.data.DataLoader(test_data, batch_size=batch_size, shuffle=True,)
+    test_data_loader = torch.utils.data.DataLoader(test_data, batch_size=batch_size, shuffle=True)
     
     validation_data = torchvision.datasets.ImageFolder(root=validation_data_path, transform=test_transform)
-    validation_data_loader = torch.utils.data.DataLoader(validation_data, batch_size=batch_size, shuffle=True,)
+    validation_data_loader = torch.utils.data.DataLoader(validation_data, batch_size=batch_size, shuffle=True)
     
     return train_data_loader, test_data_loader, validation_data_loader
 
@@ -174,7 +166,9 @@ def main(args):
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
     
-    parser.add_argument("--data_path", type=str)
+    parser.add_argument("--data_path", 
+                        type=str,
+                        default=os.environ['SM_CHANNEL_DATA_PATH'])
 
     parser.add_argument("--learning_rate",
                         type=float,
